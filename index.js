@@ -1,54 +1,72 @@
 const express = require('express');
-const app = express();
 const cors = require('cors');
-require('dotenv').config()
+require('dotenv').config();
+
+const { MongoClient, ServerApiVersion } = require('mongodb');
+
+const app = express();
 const port = process.env.PORT || 5000;
 
-// middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Ensure environment variables are set
+if (!process.env.DB_USER || !process.env.DB_PASS) {
+  throw new Error('Missing required DB_USER and DB_PASS in environment variables');
+}
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+// MongoDB Connection URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.ubq5tqr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
-});
+// Cache MongoDB connection for serverless environments like Vercel
+let client;
 
+async function connectToMongoDB() {
+  if (!client) {
+    client = new MongoClient(uri, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+    });
+    await client.connect();
+    console.log("✅ Successfully connected to MongoDB");
+  }
+  return client;
+}
+
+// API Routes
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-
+    const client = await connectToMongoDB();
     const menuCollection = client.db("roofTopRestaurant").collection("menus");
 
-    app.get('/menu', async(req, res) => {
+    // GET: Fetch menu items
+    app.get('/menu', async (req, res) => {
+      try {
         const result = await menuCollection.find().toArray();
-        res.send(result);
-    })
+        res.status(200).send(result);
+      } catch (error) {
+        console.error('❌ Error fetching menu:', error);
+        res.status(500).send({ message: 'Internal Server Error' });
+      }
+    });
 
-
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    console.log("🚀 API Routes initialized");
+  } catch (error) {
+    console.error("❌ MongoDB Connection Error:", error);
   }
 }
-run().catch(console.dir);
+run();
 
-
+// Root route
 app.get('/', (req, res) => {
-    res.send('Server is running');
-})
+  res.send('✅ Server is running successfully');
+});
 
+// Start the server
 app.listen(port, () => {
-    console.log(`Server is runnings on ${port}`);
-})
+  console.log(`🚀 Server is running on port ${port}`);
+});
